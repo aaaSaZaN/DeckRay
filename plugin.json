@@ -1,0 +1,11 @@
+{
+  "name": "DeckRay",
+  "author": "sazan",
+  "flags": ["root"],
+  "api_version": 1,
+  "publish": {
+    "tags": ["network", "proxy", "vpn", "vless"],
+    "description": "VLESS proxy connections with Reality protocol support for Steam Deck. Import configurations via URL, QR code, or subscription. Toggle connections, enable TUN mode for system-wide routing, and manage Xray-core versions.",
+    "image": "https://raw.githubusercontent.com/aaaSaZaN/DeckRay/main/docs/store-image.png"
+  }
+}

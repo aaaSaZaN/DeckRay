@@ -1,0 +1,14 @@
+{
+  "include": ["main.py", "backend"],
+  "extraPaths": ["."],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "reportMissingModuleSource": "none",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportGeneralTypeIssues": "warning",
+  "reportUnknownMemberType": "none",
+  "reportAttributeAccessIssue": "none",
+  "reportCallIssue": "none"
+}

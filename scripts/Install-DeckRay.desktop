@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Install DeckRay Plugin
+Comment=One-click install of DeckRay plugin for Decky Loader
+Exec=bash -c 'curl -sSL https://raw.githubusercontent.com/aaaSaZaN/DeckRay/main/scripts/install-deckray.sh | bash'
+Icon=utilities-terminal
+Terminal=true
+Categories=Utility;
