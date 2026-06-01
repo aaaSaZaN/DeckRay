@@ -69,3 +69,10 @@ MIT — see [LICENSE.md](LICENSE.md).
 
 - [Decky Loader Wiki](https://wiki.deckbrew.xyz/)
 - [xray-core documentation](https://xtls.github.io/)
+
+---
+
+## Credits
+
+This project is a standalone fork of the original [xray-decky](https://github.com/VadimOnix/xray-decky) project created by [VadimOnix](https://github.com/VadimOnix). Huge thanks to the original author for the solid foundation!
+
