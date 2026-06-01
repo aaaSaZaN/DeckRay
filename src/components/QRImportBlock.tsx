@@ -72,7 +72,7 @@ export const QRImportBlock: FC<QRImportBlockProps> = ({ helpTopicQr, helpTopicLa
         description="Scan with your phone or open the link below to import your VLESS configuration."
       >
         <div style={{ padding: '8px', backgroundColor: '#fff', borderRadius: '4px', display: 'inline-block' }}>
-          <QRCodeSVG value={importUrl} size={164} />
+          <QRCodeSVG value={importUrl} size={128} />
         </div>
       </Field>
 
