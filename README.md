@@ -1,65 +1,71 @@
 # DeckRay
 
-Decky Loader plugin for Steam Deck that enables VLESS proxy connections with Reality protocol support.
+[🇷🇺 Читать на русском языке](README.ru.md)
+
+Clean and powerful Decky Loader plugin for Steam Deck that enables VLESS and Hysteria2 proxy connections with Reality protocol and advanced routing.
+
+---
 
 ## Features
 
-- **Import VLESS Configurations** — via URL (single node or subscription)
-- **Connection Toggle** — turn proxy on/off from Quick Access
-- **TUN Mode** — system-wide traffic routing, **recommended for Gaming Mode**
-- **Kill Switch** — block traffic when proxy disconnects (optional)
+- **Import Configurations** — via URL (single node or subscription) and QR Code.
+- **Connection Toggle** — turn the proxy on/off directly from the Quick Access Menu in Gaming Mode.
+- **TUN Mode** — routes all system and game traffic automatically by default. No manual setup required.
+- **Kill Switch** — blocks traffic when proxy unexpectedly disconnects (optional).
+- **Auto-Updates** — supports automatic update checks and installation of xray-core.
+
+---
 
 ## Installation
 
-**Prerequisites:** Steam Deck with [Decky Loader](https://wiki.deckbrew.xyz/) installed.
+### Method 1: Desktop Installer (Primary & Easiest) ✅
+Double-click the installer directly in Steam Deck Desktop Mode!
+1. Download [Install-DeckRay.desktop](https://raw.githubusercontent.com/aaaSaZaN/DeckRay/main/scripts/Install-DeckRay.desktop) to your Steam Deck.
+2. Right-click the file → **Properties** → **Permissions** tab → check **Is executable**.
+3. Double-click the file and choose **Run** or **Execute**. The script will automatically download the latest version, install all required assets, and configure system paths.
 
-- **Plugin Store (recommended):** Decky Loader → Plugin Store → search "DeckRay" → Install.
-- **Desktop Mode (one-click):** Download [Install-DeckRay.desktop](https://raw.githubusercontent.com/aaaSaZaN/DeckRay/main/scripts/Install-DeckRay.desktop), set executable (Properties → Permissions), double-click to run. See [scripts/README.md](scripts/README.md).
-- **Manual:** Download [latest release](https://github.com/aaaSaZaN/DeckRay/releases/latest) zip → Decky Loader → Settings → Developer → Install Plugin from URL → paste zip URL.
+### Method 2: Manual Installation
+1. Download the [latest release](https://github.com/aaaSaZaN/DeckRay/releases/latest) zip archive.
+2. Go to **Decky Loader Settings** → **Developer** → **Install Plugin from URL** (paste the zip link).
 
-**TUN mode (recommended):** In Gaming Mode, Steam does not respect system SOCKS proxy settings — games and most system services ignore it. TUN mode creates a virtual network interface that routes **all** system traffic through the proxy, making it the only reliable way to proxy traffic in Gaming Mode. Enable TUN in the plugin settings; no extra setup is required.
+---
 
-Without TUN, the plugin falls back to SOCKS proxy mode, which works in Desktop Mode but may not cover games and system services in Gaming Mode.
+## How It Works
 
-**Usage, troubleshooting, more:** [GitHub Pages docs](https://aaasazan.github.io/DeckRay/).
+By default, DeckRay routes all your network traffic system-wide using **TUN mode**. This ensures that Steam, system services, and all your games go through the proxy seamlessly in both Gaming Mode and Desktop Mode. 
+
+Without TUN mode, standard SOCKS/HTTP proxying does not cover games and system services in Gaming Mode because Steam ignores system proxy configurations. With DeckRay, **TUN mode is active automatically out-of-the-box**, requiring no additional configuration.
+
+---
 
 ## Development
 
-### Prerequisites
+If you want to modify or compile the project from source code:
 
-- Node.js v16.14+
-- pnpm v9 (mandatory)
-- Python 3.x
-- xray-core binary
+### Prerequisites
+- Node.js v18+
+- pnpm v9+ (mandatory)
 
 ### Setup
-
 ```bash
+# Install frontend dependencies
 pnpm install
+
+# Compile the React/TypeScript frontend into dist/
 pnpm run build
-# Backend: pip install -r backend/requirements.txt
-# xray-core: place in backend/out/xray-core
 ```
 
-### Project Structure
+The Python backend runs natively using SteamOS/Decky Loader's pre-installed libraries and does not require installing external python packages.
 
-```
-├── src/           # Frontend TypeScript/React
-├── backend/       # Backend Python, xray-core
-├── docs/          # GitHub Pages (index.html, styles, assets)
-├── main.py        # Backend entry point
-├── plugin.json
-└── package.json
-```
-
-See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [docs/RELEASING.md](docs/RELEASING.md) for more.
+---
 
 ## License
 
-MIT — see LICENSE.md.
+MIT — see [LICENSE.md](LICENSE.md).
+
+---
 
 ## Resources
 
-- [Decky Loader](https://wiki.deckbrew.xyz/)
-- [xray-core](https://xtls.github.io/)
-- [Plugin spec](./specs/001-vless-deckray/spec.md)
+- [Decky Loader Wiki](https://wiki.deckbrew.xyz/)
+- [xray-core documentation](https://xtls.github.io/)
