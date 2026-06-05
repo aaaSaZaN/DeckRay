@@ -63,7 +63,7 @@ jobs:
 
           # Copy plugin files per DeckBrew structure
           cp -r dist "$PLUGIN_DIR/"
-          cp package.json plugin.json main.py LICENSE.md "$PLUGIN_DIR/"
+          cp package.json plugin.json main.py LICENSE "$PLUGIN_DIR/"
           [ -f README.md ] && cp README.md "$PLUGIN_DIR/"
 
           # Backend
