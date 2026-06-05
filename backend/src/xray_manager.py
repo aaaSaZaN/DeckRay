@@ -132,27 +132,37 @@ class XrayManager:
     # Inbound builders
     # ------------------------------------------------------------------
     @staticmethod
-    def _build_socks_inbound(port: int = 10808) -> Dict[str, Any]:
+    def _build_socks_inbound(port: int = 10808, tun_mode: bool = False) -> Dict[str, Any]:
+        # "fakedns" in destOverride only makes sense when a fakedns server is
+        # configured, which only happens in TUN mode.  Including it in non-TUN
+        # mode causes xray-core to try to resolve 198.18.x.x FakeIP addresses
+        # that were never issued, leading to lookup failures.
+        dest_override = ["http", "tls", "quic"]
+        if tun_mode:
+            dest_override.append("fakedns")
         return {
             "protocol": "socks",
             "listen": "127.0.0.1",
             "port": port,
             "settings": {"udp": True},
             "sniffing": {
-                "destOverride": ["http", "tls", "fakedns"],
+                "destOverride": dest_override,
                 "enabled": True
             },
             "tag": "socks",
         }
 
     @staticmethod
-    def _build_http_inbound(port: int = 10809) -> Dict[str, Any]:
+    def _build_http_inbound(port: int = 10809, tun_mode: bool = False) -> Dict[str, Any]:
+        dest_override = ["http", "tls", "quic"]
+        if tun_mode:
+            dest_override.append("fakedns")
         return {
             "protocol": "http",
             "listen": "127.0.0.1",
             "port": port,
             "sniffing": {
-                "destOverride": ["http", "tls", "fakedns"],
+                "destOverride": dest_override,
                 "enabled": True
             },
             "tag": "http",
@@ -282,64 +292,55 @@ class XrayManager:
         hy2_config: Dict[str, Any],
         outbound_interface: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Build a Hysteria2 proxy outbound.
+        """Build a Hysteria2 proxy outbound for Xray-core (>= v26.1.23).
 
-        Hysteria2 runs over QUIC (UDP).  The outbound uses the new
-        ``hysteria2`` protocol added in Xray-core ≥ 1.8.7.
+        Xray-core registers this protocol under the name ``hysteria`` (NOT
+        ``hysteria2``) and the config loader REQUIRES ``version: 2``. The
+        schema differs substantially from sing-box / the Hysteria reference
+        client, which is why the previous ``hysteria2`` / ``settings.servers``
+        layout was silently ignored by xray-core:
 
-        Required keys in *hy2_config*:
-            address, port, password
-
-        Optional:
-            sni / serverName, fingerprint, alpn,
-            up_mbps, down_mbps, obfs, obfsPassword
+          * outbound ``settings`` holds only ``{version, address, port}``
+          * the password/auth lives in ``streamSettings.hysteriaSettings.auth``
+          * TLS (mandatory) is configured via ``streamSettings.tlsSettings``
+          * the transport ``network`` must be ``hysteria``
         """
         address = hy2_config.get("address", "")
         port = hy2_config.get("port", 443)
         password = hy2_config.get("password", "")
+        server_name = (
+            hy2_config.get("sni") or hy2_config.get("serverName") or address
+        )
+
+        alpn = hy2_config.get("alpn") or ["h3"]
+        tls_settings: Dict[str, Any] = {
+            "serverName": server_name,
+            "alpn": alpn if isinstance(alpn, list) else [alpn],
+        }
+        # Self-signed certs are common on Hysteria2 servers; honour ?insecure=1
+        if hy2_config.get("insecure") or hy2_config.get("allowInsecure"):
+            tls_settings["allowInsecure"] = True
 
         outbound: Dict[str, Any] = {
-            "protocol": "hysteria2",
+            "protocol": "hysteria",
             "tag": "proxy",
             "settings": {
-                "servers": [
-                    {
-                        "address": address,
-                        "port": port,
-                        "password": password,
-                    }
-                ],
+                "version": 2,
+                "address": address,
+                "port": port,
             },
             "streamSettings": {
-                "network": "udp",
+                "network": "hysteria",
                 "security": "tls",
-                "tlsSettings": {
-                    "serverName": hy2_config.get("sni")
-                    or hy2_config.get("serverName")
-                    or address,
-                    "fingerprint": hy2_config.get("fingerprint", "chrome"),
-                    "alpn": hy2_config.get("alpn", ["h3"]),
+                "tlsSettings": tls_settings,
+                "hysteriaSettings": {
+                    "version": 2,
+                    "auth": password,
                 },
             },
         }
 
-        # Optional obfuscation (salamander)
-        obfs = hy2_config.get("obfs")
-        if obfs:
-            outbound["settings"]["servers"][0]["obfs"] = {
-                "type": obfs,
-                "password": hy2_config.get("obfsPassword", ""),
-            }
-
-        # Bandwidth hints (optional)
-        up = hy2_config.get("up_mbps")
-        down = hy2_config.get("down_mbps")
-        if up:
-            outbound["settings"]["servers"][0]["up_mbps"] = int(up)
-        if down:
-            outbound["settings"]["servers"][0]["down_mbps"] = int(down)
-
-        # Bind to physical interface in TUN mode
+        # Bind to physical interface in TUN mode (avoid routing loop)
         if outbound_interface:
             outbound["streamSettings"]["sockopt"] = {"interface": outbound_interface}
 
@@ -391,8 +392,8 @@ class XrayManager:
 
         # ----- Build inbounds -----
         inbounds: List[Dict[str, Any]] = [
-            self._build_socks_inbound(),
-            self._build_http_inbound(),
+            self._build_socks_inbound(tun_mode=tun_mode),
+            self._build_http_inbound(tun_mode=tun_mode),
         ]
         if tun_mode:
             inbounds.append(self._build_tun_inbound())
@@ -451,17 +452,19 @@ class XrayManager:
                     config["log"] = {}
                 config["log"]["loglevel"] = log_level
 
-                # Ensure a "direct" outbound exists (needed by TUN routing)
+                # Ensure "direct" and "dns-out" outbounds always exist — the
+                # routing rules in most native configs reference both tags,
+                # and missing outbounds cause dropped packets or crashes.
+                tags = {ob.get("tag") for ob in config.get("outbounds", [])}
+                if "direct" not in tags:
+                    config["outbounds"].append(self._build_direct_outbound())
+                if "dns-out" not in tags:
+                    config["outbounds"].append({
+                        "protocol": "dns",
+                        "tag": "dns-out"
+                    })
+
                 if tun_mode:
-                    tags = {ob.get("tag") for ob in config.get("outbounds", [])}
-                    if "direct" not in tags:
-                        config["outbounds"].append(self._build_direct_outbound())
-                    if "dns-out" not in tags:
-                        config["outbounds"].append({
-                            "protocol": "dns",
-                            "tag": "dns-out"
-                        })
-                    
                     # Inject fakedns for proper domain matching in TUN mode
                     if "fakedns" not in config:
                         config["fakedns"] = [{"ipPool": "198.18.0.0/15", "poolSize": 65535}]
@@ -477,10 +480,14 @@ class XrayManager:
                         config["routing"] = {"rules": []}
                     if "rules" not in config["routing"] or not isinstance(config["routing"]["rules"], list):
                         config["routing"]["rules"] = []
-                    
-                    # Intercept port 53 and send to dns-out (so Xray's DNS resolves it via fakedns)
+
+                    # Intercept client DNS (port 53) and send to dns-out, but
+                    # restrict to client inbounds only — without this restriction
+                    # xray-core's own upstream DNS queries (1.1.1.1:53 etc.) also
+                    # match the rule and loop back into dns-out indefinitely.
                     config["routing"]["rules"].insert(0, {
                         "type": "field",
+                        "inboundTag": ["tun", "socks", "http"],
                         "port": "53",
                         "outboundTag": "dns-out",
                     })
@@ -514,12 +521,17 @@ class XrayManager:
 
         outbounds: List[Dict[str, Any]] = [proxy_outbound]
 
-        if tun_mode:
-            outbounds.append(self._build_direct_outbound(outbound_interface))
-            outbounds.append({
-                "protocol": "dns",
-                "tag": "dns-out"
-            })
+        # Always add direct and dns-out outbounds — the template's routing
+        # rules reference both tags (geoip:private → direct, port:53 → dns-out)
+        # regardless of TUN mode.  Only bind to the physical interface in TUN
+        # mode to avoid routing loops.
+        outbounds.append(self._build_direct_outbound(
+            outbound_interface if tun_mode else None
+        ))
+        outbounds.append({
+            "protocol": "dns",
+            "tag": "dns-out"
+        })
 
         # ----- Assemble final config -----
         template = _load_template()
@@ -574,15 +586,28 @@ class XrayManager:
                 config["log"] = {}
             config["log"]["loglevel"] = log_level
 
-            # If TUN mode is disabled, strip TUN-specific routing rules that
-            # reference the "tun" inbound tag — they'd be harmless but noisy.
-            if not tun_mode and "routing" in config:
-                rules = config["routing"].get("rules", [])
-                config["routing"]["rules"] = [
-                    r for r in rules
-                    if "tun" not in r.get("inboundTag", [])
-                ]
-            
+            if tun_mode:
+                # Inject fakedns so TUN sniffing can resolve FakeIP addresses
+                # back to real domain names for routing decisions.
+                config["fakedns"] = [{"ipPool": "198.18.0.0/15", "poolSize": 65535}]
+                # Prepend "fakedns" to DNS servers list so FakeIP answers are
+                # served immediately without hitting the real resolver.
+                if "dns" not in config or not isinstance(config["dns"], dict):
+                    config["dns"] = {"servers": ["fakedns", "1.1.1.1", "8.8.8.8", "localhost"]}
+                elif "servers" not in config["dns"] or not isinstance(config["dns"]["servers"], list):
+                    config["dns"]["servers"] = ["fakedns", "1.1.1.1", "8.8.8.8", "localhost"]
+                elif "fakedns" not in config["dns"]["servers"]:
+                    config["dns"]["servers"].insert(0, "fakedns")
+            else:
+                # Strip TUN-specific routing rules that reference the "tun"
+                # inbound tag — they are meaningless without the TUN device.
+                if "routing" in config:
+                    rules = config["routing"].get("rules", [])
+                    config["routing"]["rules"] = [
+                        r for r in rules
+                        if "tun" not in r.get("inboundTag", [])
+                    ]
+
             # Ensure API routing rule exists
             if "routing" not in config:
                 config["routing"] = {"rules": []}
@@ -598,12 +623,11 @@ class XrayManager:
                 "policy": policy_config,
                 "inbounds": inbounds,
                 "outbounds": outbounds,
-                "routing": {"rules": [api_routing_rule]}
             }
 
             if tun_mode:
                 config["fakedns"] = [{"ipPool": "198.18.0.0/15", "poolSize": 65535}]
-                
+
                 # DNS block is required in TUN mode — without it, DNS
                 # queries to the system resolver go through TUN and either
                 # loop or get dropped because direct outbound can't resolve
@@ -622,9 +646,14 @@ class XrayManager:
                 config["routing"] = {
                     "domainStrategy": "IPIfNonMatch",
                     "rules": [
-                        # DNS queries → dns-out (triggers fakedns and resolves domains properly)
+                        api_routing_rule,
+                        # Intercept client DNS on port 53, route to dns-out.
+                        # inboundTag restriction is critical: without it,
+                        # xray-core's own upstream DNS queries (to 1.1.1.1:53
+                        # etc.) also match and loop back into dns-out forever.
                         {
                             "type": "field",
+                            "inboundTag": ["tun", "socks", "http"],
                             "port": "53",
                             "outboundTag": "dns-out",
                         },
@@ -649,7 +678,30 @@ class XrayManager:
                     ],
                 }
             else:
-                config["routing"] = {"rules": [api_routing_rule]}
+                # Non-TUN mode: still need a proper DNS block and routing so
+                # that sniffed domain names resolve through xray's built-in
+                # resolver instead of the system resolver inside the tunnel.
+                config["dns"] = {
+                    "servers": ["1.1.1.1", "8.8.8.8", "localhost"],
+                }
+                config["routing"] = {
+                    "domainStrategy": "IPIfNonMatch",
+                    "rules": [
+                        api_routing_rule,
+                        # Private IPs → direct (no need to proxy LAN traffic)
+                        {
+                            "type": "field",
+                            "ip": ["geoip:private"],
+                            "outboundTag": "direct",
+                        },
+                        # SOCKS/HTTP inbounds → proxy
+                        {
+                            "type": "field",
+                            "inboundTag": ["socks", "http"],
+                            "outboundTag": "proxy",
+                        },
+                    ],
+                }
 
         return config
 

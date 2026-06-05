@@ -454,23 +454,6 @@ class Plugin:
         except Exception as e:
             return create_error_response(ErrorCode.UNKNOWN_ERROR, f"Failed to import config: {str(e)}")
 
-    async def get_all_configs(self) -> Dict[str, Any]:
-        try:
-            configs = settings.getSetting("vlessConfigs", [])
-            subs = settings.getSetting("subscriptions", [])
-            active = settings.getSetting("activeConfigId", None)
-            return {"success": True, "configs": configs, "subscriptions": subs, "activeConfigId": active}
-        except Exception as e:
-            return create_error_response(ErrorCode.UNKNOWN_ERROR, str(e))
-            
-    async def set_active_config(self, config_id: str) -> Dict[str, Any]:
-        try:
-            settings.setSetting("activeConfigId", config_id)
-            settings.commit()
-            return {"success": True}
-        except Exception as e:
-            return create_error_response(ErrorCode.UNKNOWN_ERROR, str(e))
-            
     async def get_vless_config(self) -> Dict[str, Any]:
         """
         Get stored VLESS configuration // получает сохраненный конфиг vless.
@@ -889,16 +872,11 @@ class Plugin:
                 settings.commit()
 
                 if xray_manager.is_running():
-                    tun_mode = settings.getSetting("tunMode", {"enabled": True})
-                    log_level = settings.getSetting("logLevel", "warning")
-                    # Try to restart with the new config \\ перезапуск с новым конфигом
-                    out_interface = "wlan0"  # Could grab from get_outbound_interface but this handles basic restart
-                    from backend.src.network_utils import get_outbound_interface
-                    out_interface = get_outbound_interface() or "wlan0"
-                    
+                    # Restart with the new config. toggle_connection handles
+                    # TUN mode, interface detection, and log level internally.
                     await self.toggle_connection(False)
                     await self.toggle_connection(True)
-                    
+
                 return {"success": True}
             return {"success": False, "error": "Config not found"}
         except Exception as e:
